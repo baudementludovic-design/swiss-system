@@ -39,12 +39,12 @@ function goToTeam(id){
 }
 function teamActions(parent,id){const actions=add(parent,'div','team-entry-actions');actions.append(btn('Voir la fiche',()=>openTeam(id),'search-action'));actions.append(btn('Y aller →',()=>goToTeam(id),'search-action go'));}
 function renderTeams(){
- add(content,'h2',null,'Équipes engagées');
+ add(content,'h2',null,'Équipes inscrites');
  const all=teams().slice().sort((a,b)=>Number(a.number)-Number(b.number));
  if(!all.length)return empty(content,'Aucune équipe publiée.');
  add(content,'p','muted',all.length+' équipes · Touchez « Voir la fiche » pour le parcours, ou « Y aller » pour accéder à leur phase la plus avancée.');
  const list=add(content,'div','team-directory');
- all.forEach(t=>{const entry=add(list,'article','team-entry');add(entry,'strong',null,'Équipe n° '+fmt(t.number));add(entry,'p',null,Array.isArray(t.players)&&t.players.length?t.players.join(' · '):'Composition non publiée');if(t.club)add(entry,'p','muted','Club : '+t.club);teamActions(entry,t.id);});
+ all.forEach(t=>{const entry=add(list,'article','team-entry');const header=add(entry,'div','team-entry-header');add(header,'strong',null,'Équipe n° '+fmt(t.number));if(t.present===false)add(header,'span','badge absent','Absente');else if(t.present===true)add(header,'span','badge done','Présente');add(entry,'p',null,Array.isArray(t.players)&&t.players.length?t.players.join(' · '):'Composition non publiée');if(t.club)add(entry,'p','muted','Club : '+t.club);teamActions(entry,t.id);});
 }
 function teamButton(parent,id){const b=btn(teamName(id),()=>openTeam(id),'team-link');if(id==null||!teamInfo(id))b.disabled=true;parent.append(b);return b;}
 function cardMatch(parent,m,context){const finished=context==='swiss'?m.status==='VALIDÉ':m.winner!=null;const hasTeams=m.teamA!=null&&m.teamB!=null;const terrainRaw=fmt(m.terrain).trim();const normalizedTerrain=terrainRaw.toLocaleLowerCase('fr');const hasAssignedTerrain=!!terrainRaw&&terrainRaw!=='—'&&!['en attente','en attente de terrain','attente','a definir','à définir','a définir','a definir / en attente','à definir / en attente'].includes(normalizedTerrain);const terrainLabel=hasAssignedTerrain?'⌖  Terrain '+terrainRaw:'⌖  Terrain En attente';let badgeClass='wait';let badgeText='À jouer';if(finished){badgeClass='done';badgeText='Terminé';}else if(hasAssignedTerrain){badgeClass='wait';badgeText='En cours';}else if(hasTeams){badgeClass='ready';badgeText='À jouer';}const box=add(parent,'article','match');if(focusTeamId!=null&&(key(m.teamA)===key(focusTeamId)||key(m.teamB)===key(focusTeamId)))box.classList.add('focus-match');const head=add(box,'div','match-top');add(head,'span','terrain',terrainLabel);add(head,'span','badge '+badgeClass,badgeText);
