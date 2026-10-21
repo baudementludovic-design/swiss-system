@@ -11,6 +11,10 @@ const key=v=>v==null?'':String(v);
 const normalizeSearch=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('fr');
 const teams=()=>Array.isArray(snapshot?.teams)?snapshot.teams:[];
 const teamInfo=id=>teams().find(t=>key(t.id)===key(id));
+const isPresent=t=>t?.present!==false;
+const absentTeams=()=>teams().filter(t=>t?.present===false);
+const currentSwissRound=()=>{const rounds=Array.isArray(snapshot?.rounds)?snapshot.rounds:[];return rounds.length?rounds[rounds.length-1]:null;};
+const setStatLabel=(id,main,note='')=>{const node=$(id);if(!node)return;node.innerHTML='';node.append(document.createTextNode(main));if(note){const span=el('span','stat-subnote',note);node.append(span);}};
 const teamName=id=>{if(id==null)return 'À déterminer';const t=teamInfo(id);if(!t)return 'Équipe '+String(id);return 'N° '+fmt(t.number)+(Array.isArray(t.players)&&t.players.length?' · '+t.players.join(' / '):'');};
 const btn=(text,click,cls)=>{const b=el('button',cls,text);b.type='button';b.addEventListener('click',click);return b;};
 const empty=(p,text)=>add(p,'div','empty',text);
@@ -62,14 +66,16 @@ function renderRanking(){
  const outer=add(content,'div','ranking-scroll');outer.setAttribute('role','region');outer.setAttribute('aria-label','Classement général, défilement horizontal sur mobile');outer.tabIndex=0;
  const table=add(outer,'table','ranking-table');const thead=add(table,'thead');const h=add(thead,'tr');
  ['Rang','Équipe','Club','J','V','Buchholz','Buchholz fin','Diff.','Tir de départage'].forEach(label=>add(h,'th',null,label));
+ const hasShootout=rows.some(r=>r.shootout!=null&&String(r.shootout).trim()!==''&&!['—','-'].includes(String(r.shootout).trim()));
+ if(!hasShootout)h.lastElementChild.remove();
  const body=add(table,'tbody');
  rows.forEach(r=>{const tr=add(body,'tr');const team=teamInfo(r.teamId);
   const rank=add(tr,'td','ranking-rank');add(rank,'span','rank-medal',fmt(r.rank));
   const name=add(tr,'td','ranking-team');const button=btn('',()=>openTeam(r.teamId),'ranking-team-button');
   add(button,'strong',null,'N° '+fmt(team?.number));add(button,'span',null,composition(team));name.append(button);
-  add(tr,'td','ranking-club',team?.club||'—');
+  const clubText=String(team?.club||'—');const clubCell=add(tr,'td','ranking-club');const clubLabel=add(clubCell,'span','ranking-club-text',clubText);clubLabel.title=clubText;if(clubText.length>28)clubLabel.classList.add('club-long');if(clubText.length>46)clubLabel.classList.add('club-very-long');
   [r.played,r.wins,r.buchholz,r.fineBuchholz].forEach((val,i)=>add(tr,'td','ranking-number'+(i===1?' ranking-wins':''),fmt(val)));
-  add(tr,'td','ranking-number',signed(r.diff));add(tr,'td','ranking-number',fmt(r.shootout));
+  add(tr,'td','ranking-number',signed(r.diff));if(hasShootout)add(tr,'td','ranking-number',fmt(r.shootout));
  });
  const note=add(content,'p','ranking-note','Touchez une équipe pour consulter sa composition et l’ensemble de ses rencontres. Faites glisser le classement horizontalement pour afficher tous les critères.');
 }
@@ -88,7 +94,7 @@ function findTeams(){
  if(!found.length)return empty(out,'Aucune équipe ni joueur trouvé.');
  found.forEach(t=>{const row=add(out,'div','search-hit');const name=add(row,'span','search-hit-info');add(name,'strong',null,'Équipe n° '+fmt(t.number));add(name,'small',null,(t.players||[]).join(' / ')||'Composition non publiée');const actions=add(row,'div','search-hit-actions');actions.append(btn('Fiche',()=>openTeam(t.id),'search-action'));actions.append(btn('Y aller →',()=>goToTeam(t.id),'search-action go'));});
 }
-function apply(data,updated){snapshot=data;lastUpdated=updated;$('title').textContent=data.competition?.name||'Compétition';$('metadata').textContent=[data.competition?.date,data.competition?.location,data.competition?.format].filter(Boolean).join(' · ')||'Suivi public de la compétition';$('statTeams').textContent=teams().length;const rounds=data.rounds||[];$('statRound').textContent=rounds.length+'/'+(data.competition?.plannedRounds||rounds.length);$('statMatches').textContent=rounds.reduce((n,r)=>n+(r.matches||[]).filter(m=>m.status==='VALIDÉ').length,0);$('status').textContent='Dernière publication : '+(updated?new Date(updated).toLocaleString('fr-FR'):'inconnue');render();if($('search').value.trim())findTeams();}
+function apply(data,updated){snapshot=data;lastUpdated=updated;$('title').textContent=data.competition?.name||'Compétition';$('metadata').textContent=[data.competition?.date,data.competition?.location,data.competition?.format].filter(Boolean).join(' · ')||'Suivi public de la compétition';$('statTeams').textContent=teams().length;const absent=absentTeams().length;setStatLabel('statTeamsLabel','Équipes',absent?`(dont ${absent} ${absent>1?'équipes absentes':'équipe absente'})`:'');const rounds=data.rounds||[];const liveRound=currentSwissRound();const roundNumber=liveRound?.number??rounds.length;const plannedRounds=data.competition?.plannedRounds||rounds.length;$('statRound').textContent=rounds.length?`Tour ${roundNumber} sur ${plannedRounds}`:`0 sur ${plannedRounds}`;$('statRound').classList.add('stat-round-value');setStatLabel('statRoundLabel','Tours suisses');const totalMatches=(liveRound?.matches||[]).filter(m=>m.teamA!=null||m.teamB!=null||m.bye).length;const validatedMatches=(liveRound?.matches||[]).filter(m=>m.status==='VALIDÉ').length;const remainingMatches=Math.max(0,totalMatches-validatedMatches);$('statMatches').textContent=validatedMatches;setStatLabel('statMatchesLabel',validatedMatches===1?'Partie validée':'Parties validées',totalMatches?`sur ${totalMatches} ${totalMatches>1?'parties':'partie'} · ${remainingMatches} à jouer`:'');$('status').textContent='Dernière publication : '+(updated?new Date(updated).toLocaleString('fr-FR'):'inconnue');render();if($('search').value.trim())findTeams();}
 async function load(){if(working)return;working=true;try{if(!/^[a-f0-9-]{36}$/i.test(liveId||''))throw Error('Lien incomplet : identifiant Live manquant ou invalide.');if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(cfg.supabaseUrl||'')||!cfg.anonKey)throw Error('Site non configuré : vérifiez config.js.');const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);let resp;try{resp=await fetch(cfg.supabaseUrl+'/rest/v1/live_competitions?select=payload,updated_at&published=eq.true&public_id=eq.'+encodeURIComponent(liveId),{headers:{apikey:cfg.anonKey},cache:'no-store',signal:controller.signal});}finally{clearTimeout(timeout);}if(!resp.ok)throw Error('Impossible de récupérer les résultats (HTTP '+resp.status+').');const rows=await resp.json();if(!rows.length)throw Error('Compétition non publiée ou retirée du public.');apply(rows[0].payload,rows[0].updated_at);}catch(e){$('status').textContent='Mise à jour impossible : '+String(e.message||e);if(!snapshot){content.replaceChildren();empty(content,String(e.message||e));}}finally{working=false;}}
  document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{activeTab=b.dataset.tab;detailId=null;focusTeamId=null;render();}));$('search').addEventListener('input',findTeams);$('refresh').addEventListener('click',load);load();setInterval(load,15000);
 })();
